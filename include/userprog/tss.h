@@ -20,11 +20,11 @@ struct task_state {
 	uint64_t res3;
 	uint16_t res4;
 	uint16_t iomb;
-}__attribute__ ((packed));
+} __attribute__((packed));
 
 struct task_state;
-void tss_init (void);
-struct task_state *tss_get (void);
-void tss_update (struct thread *next);
+void tss_init(void);
+struct task_state *tss_get(void);
+void tss_update(struct thread *next);
 
 #endif /* userprog/tss.h */
