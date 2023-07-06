@@ -4,6 +4,8 @@
 #include <random.h>
 #include <stdio.h>
 #include <string.h>
+#include "devices/timer.h"
+#include <list.h>
 #include "threads/flags.h"
 #include "threads/interrupt.h"
 #include "threads/intr-stubs.h"
@@ -27,6 +29,9 @@
 /* List of processes in THREAD_READY state, that is, processes
    that are ready to run but not actually running. */
 static struct list ready_list;
+
+/* List of processes in sleeping state. */
+static struct list sleep_list;
 
 /* Idle thread. */
 static struct thread *idle_thread;
@@ -103,6 +108,7 @@ void thread_init(void) {
 	/* Init the globla thread context */
 	lock_init(&tid_lock);
 	list_init(&ready_list);
+	list_init(&sleep_list);
 	list_init(&destruction_req);
 
 	/* Set up a thread structure for the running thread. */
@@ -232,6 +238,37 @@ void thread_unblock(struct thread *t) {
 	intr_set_level(old_level);
 }
 
+bool thread_compare_wakeup_tick(const struct list_elem *e1, const struct list_elem *e2, void *aux UNUSED) {
+	struct thread *t1 = list_entry(e1, struct thread, elem);
+	struct thread *t2 = list_entry(e2, struct thread, elem);
+	return t1->wakeup_tick < t2->wakeup_tick;
+}
+
+void thread_sleep(int64_t ticks) {
+	struct thread *curr = thread_current();
+	if (curr == idle_thread)
+		return;
+
+	enum intr_level old_level = intr_disable();
+
+	ASSERT(!intr_context());
+
+	curr->wakeup_tick = timer_ticks() + ticks;
+	list_insert_ordered(&sleep_list, &curr->elem, thread_compare_wakeup_tick, NULL);
+	thread_block();
+	intr_set_level(old_level);
+}
+
+void thread_wakeup(int64_t ticks) {
+	for (struct list_elem *e = list_begin(&sleep_list); e != list_end(&sleep_list);) {
+		struct thread *t = list_entry(e, struct thread, elem);
+		if (t->wakeup_tick > ticks)
+			break;
+		e = list_remove(e);
+		thread_unblock(t);
+	}
+}
+
 /* Returns the name of the running thread. */
 const char *thread_name(void) { return thread_current()->name; }
 
@@ -293,7 +330,8 @@ void thread_set_priority(int new_priority) { thread_current()->priority = new_pr
 int thread_get_priority(void) { return thread_current()->priority; }
 
 /* Sets the current thread's nice value to NICE. */
-void thread_set_nice(int nice UNUSED) { /* TODO: Your implementation goes here */ }
+void thread_set_nice(int nice UNUSED) { /* TODO: Your implementation goes here */
+}
 
 /* Returns the current thread's nice value. */
 int thread_get_nice(void) {
