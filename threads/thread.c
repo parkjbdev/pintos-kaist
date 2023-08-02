@@ -13,6 +13,7 @@
 #include "threads/synch.h"
 #include "threads/vaddr.h"
 #include "intrinsic.h"
+#include <utils.h>
 #ifdef USERPROG
 #include "userprog/process.h"
 #endif
@@ -201,6 +202,7 @@ tid_t thread_create(const char *name, int priority, thread_func *function, void 
 
 	/* Add to run queue. */
 	thread_unblock(t);
+	thread_yield();
 
 	return tid;
 }
@@ -233,7 +235,7 @@ void thread_unblock(struct thread *t) {
 
 	old_level = intr_disable();
 	ASSERT(t->status == THREAD_BLOCKED);
-	list_push_back(&ready_list, &t->elem);
+	list_insert_ordered(&ready_list, &t->elem, thread_compare_priority_desc, NULL);
 	t->status = THREAD_READY;
 	intr_set_level(old_level);
 }
@@ -318,16 +320,69 @@ void thread_yield(void) {
 
 	old_level = intr_disable();
 	if (curr != idle_thread)
-		list_push_back(&ready_list, &curr->elem);
+		list_insert_ordered(&ready_list, &curr->elem, thread_compare_priority_desc, NULL);
 	do_schedule(THREAD_READY);
 	intr_set_level(old_level);
 }
 
+bool thread_compare_priority_asc(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED) {
+	struct thread *t1 = list_entry(a, struct thread, elem);
+	struct thread *t2 = list_entry(b, struct thread, elem);
+
+	return t1->priority < t2->priority;
+}
+
+bool thread_compare_priority_desc(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED) {
+	struct thread *t1 = list_entry(a, struct thread, elem);
+	struct thread *t2 = list_entry(b, struct thread, elem);
+
+	return t1->priority > t2->priority;
+}
+
 /* Sets the current thread's priority to NEW_PRIORITY. */
-void thread_set_priority(int new_priority) { thread_current()->priority = new_priority; }
+void thread_set_priority(int new_priority) {
+	struct thread *curr = thread_current();
+
+	curr->init_priority = new_priority;
+	curr->priority =
+		!list_empty(&curr->lock_list) && curr->priority > new_priority ? thread_max_lock_priority() : new_priority;
+
+	thread_yield();
+}
 
 /* Returns the current thread's priority. */
 int thread_get_priority(void) { return thread_current()->priority; }
+
+int thread_max_lock_priority(void) {
+	struct thread *curr = thread_current();
+	int prio = curr->init_priority;
+	if (list_empty(&curr->lock_list))
+		return prio;
+
+	struct lock *l;
+	list_for_each_entry(l, &curr->lock_list, elem) {
+		if (list_empty(&l->semaphore.waiters))
+			continue;
+		struct thread *max_thread = list_first_entry(&l->semaphore.waiters, struct thread, elem);
+		prio = MAX(prio, max_thread->priority);
+	}
+
+	return prio;
+}
+
+/* Donate priority to lock holder */
+void thread_donate_priority(void) {
+	ASSERT(!intr_context());
+
+	struct thread *t = thread_current();
+
+	for (int depth = 0; t && depth < PRI_DONATION_DEPTH_LIMIT; depth++) {
+		if (!t->blocked_lock)
+			break;
+		t->blocked_lock->holder->priority = t->priority;
+		t = t->blocked_lock->holder;
+	}
+}
 
 /* Sets the current thread's nice value to NICE. */
 void thread_set_nice(int nice UNUSED) { /* TODO: Your implementation goes here */
@@ -407,8 +462,11 @@ static void init_thread(struct thread *t, const char *name, int priority) {
 	t->status = THREAD_BLOCKED;
 	strlcpy(t->name, name, sizeof t->name);
 	t->tf.rsp = (uint64_t)t + PGSIZE - sizeof(void *);
+	t->init_priority = priority;
 	t->priority = priority;
 	t->magic = THREAD_MAGIC;
+	list_init(&t->lock_list);
+	t->blocked_lock = NULL;
 }
 
 /* Chooses and returns the next thread to be scheduled.  Should

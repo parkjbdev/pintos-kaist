@@ -26,6 +26,7 @@ typedef int tid_t;
 #define PRI_MIN 0                       /* Lowest priority. */
 #define PRI_DEFAULT 31                  /* Default priority. */
 #define PRI_MAX 63                      /* Highest priority. */
+#define PRI_DONATION_DEPTH_LIMIT 8      /* Maximum depth of priority donation chain */
 
 /* A kernel thread or user process.
  *
@@ -102,6 +103,10 @@ struct thread {
 	/* Table for whole virtual memory owned by thread. */
 	struct supplemental_page_table spt;
 #endif
+    /* Priority Donation */
+    int init_priority;                  /* Initial priority */
+    struct lock *blocked_lock;          /* Lock that blocked thread */
+    struct list lock_list;              /* List of locks that thread is holding */
 
 	/* Owned by thread.c. */
 	struct intr_frame tf;               /* Information for switching */
