@@ -192,6 +192,8 @@ int process_wait(tid_t child_tid UNUSED) {
 	/* XXX: Hint) The pintos exit if process_wait (initd), we recommend you
 	 * XXX:       to add infinite loop here before
 	 * XXX:       implementing the process_wait. */
+	while (1)
+		;
 	return -1;
 }
 
@@ -300,6 +302,19 @@ static bool validate_segment(const struct Phdr *, struct file *);
 static bool load_segment(struct file *file, off_t ofs, uint8_t *upage, uint32_t read_bytes, uint32_t zero_bytes,
 						 bool writable);
 
+#define MAX_ARGS 64
+static int tokenize(char *file_name, char **argv);
+
+static int tokenize(char *str, char **argv) {
+	int argc = 0;
+	char *next_ptr = NULL;
+	for (char *save_ptr = strtok_r(str, " ", &next_ptr); save_ptr != NULL; save_ptr = strtok_r(NULL, " ", &next_ptr)) {
+		argv[argc++] = save_ptr;
+	}
+
+	return argc;
+}
+
 /* Loads an ELF executable from FILE_NAME into the current thread.
  * Stores the executable's entry point into *RIP
  * and its initial stack pointer into *RSP.
@@ -318,17 +333,27 @@ static bool load(const char *file_name, struct intr_frame *if_) {
 		goto done;
 	process_activate(thread_current());
 
+	char *argv[MAX_ARGS] = {NULL};
+	int argc = tokenize((char *)file_name, argv);
+
 	/* Open executable file. */
-	file = filesys_open(file_name);
+    file = filesys_open(argv[0]);
 	if (file == NULL) {
-		printf("load: %s: open failed\n", file_name);
+		printf("load: %s: open failed\n", argv[0]);
 		goto done;
 	}
 
 	/* Read and verify executable header. */
-	if (file_read(file, &ehdr, sizeof ehdr) != sizeof ehdr || memcmp(ehdr.e_ident, "\177ELF\2\1\1", 7) ||
-		ehdr.e_type != 2 || ehdr.e_machine != 0x3E // amd64
-		|| ehdr.e_version != 1 || ehdr.e_phentsize != sizeof(struct Phdr) || ehdr.e_phnum > 1024) {
+	if ( // clang-format off
+            file_read(file, &ehdr, sizeof ehdr) != sizeof ehdr
+            || memcmp(ehdr.e_ident, "\177ELF\2\1\1", 7)
+            || ehdr.e_type != 2
+            || ehdr.e_machine != 0x3E // amd64
+            || ehdr.e_version != 1
+            || ehdr.e_phentsize != sizeof(struct Phdr)
+            || ehdr.e_phnum > 1024
+		 // clang-format on
+	) {
 		printf("load: %s: error loading executable\n", file_name);
 		goto done;
 	}
@@ -390,8 +415,40 @@ static bool load(const char *file_name, struct intr_frame *if_) {
 	/* Start address. */
 	if_->rip = ehdr.e_entry;
 
-	/* TODO: Your code goes here.
-	 * TODO: Implement argument passing (see project2/argument_passing.html). */
+	uintptr_t argv_addr[MAX_ARGS] = {0};
+
+	// Copy argv[i] to stack
+	for (int i = argc - 1; i >= 0; i--) {
+		int len = strlen(argv[i]) + 1;
+		if_->rsp -= len;
+		memcpy((void *)if_->rsp, argv[i], len);
+		argv_addr[i] = if_->rsp;
+	}
+
+	// word align padding
+	int padding = if_->rsp % 8;
+	if_->rsp -= padding;
+	memset((void *)if_->rsp, 0, padding);
+
+	// sentinel
+	if_->rsp -= 8;
+	memset((void *)if_->rsp, 0, 8);
+
+	// argv addresss
+	for (int i = argc - 1; i >= 0; i--) {
+		if_->rsp -= 8;
+		memcpy((void *)if_->rsp, &argv_addr[i], 8);
+	}
+
+	// fake return address
+	if_->rsp -= 8;
+	memset((void *)if_->rsp, 0, 8);
+
+	if_->R.rdi = argc;
+	if_->R.rsi = if_->rsp + 8;
+
+    // dump
+	hex_dump(if_->rsp, (void *)if_->rsp, USER_STACK - (uint64_t)if_->rsp, true);
 
 	success = true;
 

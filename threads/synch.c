@@ -109,7 +109,8 @@ void sema_up(struct semaphore *sema) {
 	if (!list_empty(&sema->waiters))
 		thread_unblock(list_entry(list_pop_front(&sema->waiters), struct thread, elem));
 	sema->value++;
-	thread_yield();
+    // FIXME: thread_yield leads assertion when testing userprog
+	// thread_yield();
 	intr_set_level(old_level);
 }
 
