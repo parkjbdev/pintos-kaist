@@ -310,6 +310,12 @@ void thread_exit(void) {
 	NOT_REACHED();
 }
 
+void thread_try_yield(void) {
+	if (!list_empty(&ready_list) && thread_current() != idle_thread) {
+		thread_yield();
+	}
+}
+
 /* Yields the CPU.  The current thread is not put to sleep and
    may be scheduled again immediately at the scheduler's whim. */
 void thread_yield(void) {

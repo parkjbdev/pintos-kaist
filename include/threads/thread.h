@@ -136,6 +136,7 @@ tid_t thread_tid(void);
 const char *thread_name(void);
 
 void thread_exit(void) NO_RETURN;
+void thread_try_yield(void);
 void thread_yield(void);
 
 bool thread_compare_wakeup_tick(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
