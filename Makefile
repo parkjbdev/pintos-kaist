@@ -1,11 +1,21 @@
 BUILD_SUBDIRS = threads userprog vm filesys
 TAR_PATH := team${TEAM}.tar.gz
 
-all::
-	@echo "Run 'make' in subdirectories: $(BUILD_SUBDIRS)."
-	@echo "This top-level make has only 'clean' targets."
+all: threads userprog vm filesys
 
 CLEAN_SUBDIRS = $(BUILD_SUBDIRS)
+
+threads::
+	$(MAKE) -C threads
+
+userprog::
+	$(MAKE) -C userprog
+
+vm::
+	$(MAKE) -C vm
+
+filesys::
+	$(MAKE) -C filesys
 
 clean::
 	for d in $(CLEAN_SUBDIRS); do $(MAKE) -C $$d $@; done
