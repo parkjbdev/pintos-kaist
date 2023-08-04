@@ -38,4 +38,11 @@ enum {
 	SYS_UMOUNT,
 };
 
+typedef int pid_t;
+
+void halt(void);
+void exit(int);
+int exec(const char *);
+int write(int, const void *, unsigned);
+
 #endif /* lib/syscall-nr.h */

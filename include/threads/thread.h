@@ -5,6 +5,7 @@
 #include <list.h>
 #include <stdint.h>
 #include "threads/interrupt.h"
+#include "threads/synch.h"
 #ifdef VM
 #include "vm/vm.h"
 #endif
@@ -112,6 +113,14 @@ struct thread {
 	struct intr_frame tf;               /* Information for switching */
 	unsigned magic;                     /* Detects stack overflow. */
     int64_t wakeup_tick;                /* Tick to wake up */
+
+    struct semaphore fork_sema;         /* Semaphore for thread_fork */
+    struct semaphore wait_sema;         /* Semaphore for thread_wait */
+    struct semaphore exit_sema;         /* Semaphore for thread_exit */ 
+
+    struct list child_list;            /* List of child processes */
+    struct list_elem child_elem;       /* List element for child processes */
+    int64_t exit_status;               /* Exit status of thread */
 };
 
 /* If false (default), use round-robin scheduler.
@@ -157,5 +166,7 @@ int thread_get_recent_cpu(void);
 int thread_get_load_avg(void);
 
 void do_iret(struct intr_frame *tf);
+
+struct thread *get_child(tid_t);
 
 #endif /* threads/thread.h */

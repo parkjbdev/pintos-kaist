@@ -200,6 +200,10 @@ tid_t thread_create(const char *name, int priority, thread_func *function, void 
 	t->tf.cs = SEL_KCSEG;
 	t->tf.eflags = FLAG_IF;
 
+	/* Add to parent's child list. */
+	struct thread *parent = thread_current();
+	list_push_back(&parent->child_list, &t->child_elem);
+
 	/* Add to run queue. */
 	thread_unblock(t);
 	thread_yield();
@@ -473,6 +477,11 @@ static void init_thread(struct thread *t, const char *name, int priority) {
 	t->magic = THREAD_MAGIC;
 	list_init(&t->lock_list);
 	t->blocked_lock = NULL;
+	list_init(&t->child_list);
+
+	sema_init(&t->fork_sema, 0);
+	sema_init(&t->wait_sema, 0);
+	sema_init(&t->exit_sema, 0);
 }
 
 /* Chooses and returns the next thread to be scheduled.  Should
@@ -646,4 +655,19 @@ static tid_t allocate_tid(void) {
 	lock_release(&tid_lock);
 
 	return tid;
+}
+
+/* Returns the child thread with the given tid.
+ * If no such child exists, returns NULL. */
+struct thread *get_child(tid_t child_tid) {
+	struct thread *curr = thread_current();
+
+	struct thread *child;
+
+	list_for_each_entry(child, &curr->child_list, child_elem) {
+		if (child->tid == child_tid)
+			return child;
+	}
+
+	return NULL;
 }
